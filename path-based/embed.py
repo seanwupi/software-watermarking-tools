@@ -33,7 +33,7 @@ __branch_function:
 asm_call_branch_function = "\tcall\tbranch_function"
 
 def replaceJmpToCall():
-    global asmcode,elffile,asm
+    global asmcode,elffile,asm,bhOrder
 
     #parse label
     labelMatcher = re.compile('\s*[.\w]+:\s*$')
@@ -67,12 +67,35 @@ def replaceJmpToCall():
     #Calculate label address. Some label like function name can be fetch directly
     objLabelMatcher = re.compile('[A-Fa-f0-9]+\s*<[.\w]+>:$')
     labelObjPos = dict()
+    bhCounter = 0
+    fixLabelMap = dict()
     for i in range(len(objdump)):
         m = objLabelMatcher.match(objdump[i])
         if m!=None:
             label = re.findall(r'<[.\w]+>',m.group())[0][1:-1]
+            if label[:2]=='BH':
+                fixLabel = 'BH%d' % bhOrder[bhCounter]
+                fixLabelMap[label] = fixLabel
+                objdump[i] = objdump[i].replace(label,fixLabel)
+                bhCounter += 1
+                label = fixLabel
             if label in labelIndex:
                 labelObjPos[label] = i+1
+    #fix rearranged label
+    for i in range(len(asm)):
+	m = labelMatcher.match(asm[i])
+	if m!=None:
+            label = m.group()[:-1]
+            if label in fixLabelMap:
+                asm[i] = fixLabelMap[label]+':'
+    labelList = []
+    labelIndex = dict()
+    for i in range(len(asm)):
+	m = labelMatcher.match(asm[i])
+	if m!=None:
+            label = m.group()[:-1]
+            labelList.append(label)
+	    labelIndex[label] = i
 
     #Others label's address can be calculated by distance between well-known label
     for i in range(len(labelList)):
@@ -84,7 +107,7 @@ def replaceJmpToCall():
             y = labelList[i-1]
             offset = 0
             for j in range(labelIndex[y]+1,labelIndex[x]):
-                if asm[j].strip()[0]!='.':
+                if len(asm[j].strip())==0 or asm[j].strip()[0]!='.':
                     offset += 1
             labelObjPos[x] = labelObjPos[y]+offset
 
@@ -102,6 +125,11 @@ def replaceJmpToCall():
     invLabelIndex = [(v,k) for k, v in labelIndex.items()]
     invLabelIndex.sort()
     for i,x in jmpList:
+        if x[:2]=='BH':
+            y = int(fixLabelMap[x][2:])
+            if y==bhCounter-1:
+                y = -1
+            x = 'BH%d' % (y+1)
         fr = invLabelIndex[bisect.bisect(invLabelIndex,(i,0))-1][1]
         offset = 0
         for j in range(labelIndex[fr]+1,i):
@@ -116,7 +144,7 @@ def replaceJmpToCall():
     jmpTable = []
     for (x,y) in jmpTableEntry:
         if x==lastEntry:
-            print x
+            print 'hash collision: '+str(x)
         if x>lastEntry+1:
             jmpTable.append('\t.zero\t%d' % ((x-lastEntry-1)*4))
         jmpTable.append('\t.long\t%d' % (y-jmpTableAddr))
@@ -127,7 +155,7 @@ def replaceJmpToCall():
     #replace origin dummy table to jmp table
     insert_point = asm.index(asm_branch_function_code[6])
     asm = asm[:insert_point]+jmpTable+asm[insert_point+1:]
-    print 'entry = %x' % labelAddr['BH0']
+    print 'private key = %d' % labelAddr['BH0']
         
 def generateWatermark(msg):
     bmsg = []
@@ -140,7 +168,7 @@ def generateWatermark(msg):
     return bmsg
 
 def embedWatermark(msg):
-    global asm
+    global asm,bhOrder
     random.seed(123)
     jmpn = 0
     for line in asm:
@@ -170,10 +198,10 @@ def embedWatermark(msg):
                 el = []
             if len(jl[i])==md:
                 el.append(i)
-        x = random.choice(el)
         if len(el)==1 and el[0]==initPoint:
             x = x
         else:
+            x = random.choice(el)
             while x==initPoint:
                 x = random.choice(el)
     if msg[-1]==1:
@@ -183,19 +211,21 @@ def embedWatermark(msg):
 
     wasm = []
     jmpn = 0
+    bhOrder = []
     for line in asm:
         wasm.append(line)
         if line.strip().find('jmp')==0:
             for x in jl[jmpn]:
-                if x==len(msg):
+                '''if x==len(msg):
                     y = 0
                 else:
-                    y = x+1
+                    y = x+1'''
                 wasm.append('BH%d:' % x)
-                wasm.append('\tjmp\tBH%d' % y)
+                wasm.append('\tjmp\tBH%d' % x)
+                bhOrder.append(x)
             jmpn += 1
-
     asm = wasm
+
 
 def main():
     global asmcode,elffile,asm
@@ -220,6 +250,9 @@ def main():
 
     #embed watermark
     embedWatermark(msg)
+
+    with open('zz','w') as fasmcode:
+        fasmcode.write('\n'.join(asm))
 
     #replace `jmp XX` to `call branch_function`, also need to fill jmp table
     replaceJmpToCall()
