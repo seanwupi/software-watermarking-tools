@@ -158,7 +158,7 @@ def replaceJmpToCall():
     print 'private key = %d' % labelAddr['BH0']
         
 def generateWatermark(msg):
-    bmsg = []
+    bmsg = [1]
     for x in msg:
         for i in range(0,8):
             if ord(x)&(2**i):
@@ -175,7 +175,7 @@ def embedWatermark(msg):
         if line.strip().find('jmp')==0:
             jmpn += 1
 
-    initPoint = jmpn/2
+    initPoint = 0
     jl = []
     for i in range(jmpn):
         jl.append([])
@@ -188,7 +188,7 @@ def embedWatermark(msg):
         if msg[j]==1:
             er = range(x,jmpn)
         else:
-            er = range(0,x+1)
+            er = range(1,x+1)
 
         el = []
         md = len(jl[x])
@@ -257,9 +257,13 @@ def main():
     #replace `jmp XX` to `call branch_function`, also need to fill jmp table
     replaceJmpToCall()
 
-    #write back and assemble
+    #write back and assemble, labels for jmp are no need anymore
+    wasm = []
+    for l in asm:
+        if l[:2]!='BH':
+            wasm.append(l)
     with open(asmcode,'w') as fasmcode:
-        fasmcode.write('\n'.join(asm))
+        fasmcode.write('\n'.join(wasm))
     subprocess.call(['g++','-m32','-o',elffile,asmcode])
 
 

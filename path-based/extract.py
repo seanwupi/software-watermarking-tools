@@ -24,10 +24,11 @@ while True:
     addr.append(taddr)
     if addr[-1]-addr[-2]==0x4005:
 	sys.stdout.write('%10x' % addr[-6])
-	if len(ca)%8==0:
+	if len(ca)%8==1:
 	    print ''
 	ca.append(addr[-6])
 s = ''
+ca.pop(0)
 for i in range(0,len(ca)-8,8):
     x = 0
     for j in range(0,8):
