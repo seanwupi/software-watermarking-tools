@@ -232,12 +232,14 @@ def main():
 
     parser = argparse.ArgumentParser(description='g++ with watermarking')
     parser.add_argument('--msg')
+    parser.add_argument('-o')
     parser.add_argument('src')
     args = parser.parse_args()
 
     #compile to x86 assembly
     asmcode = os.path.splitext(args.src)[0]+'.s'
     elffile = os.path.splitext(args.src)[0]
+    finalElf = args.o
     subprocess.call(['g++',args.src,'-S','-m32','-masm=intel','-o',asmcode])
 
     #embed branch function (with dummy fixed size table)
@@ -264,7 +266,7 @@ def main():
             wasm.append(l)
     with open(asmcode,'w') as fasmcode:
         fasmcode.write('\n'.join(wasm))
-    subprocess.call(['g++','-m32','-o',elffile,asmcode])
+    subprocess.call(['g++','-m32','-o',finalElf,asmcode])
 
 
 if __name__ == '__main__':
